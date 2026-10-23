@@ -4,7 +4,7 @@
 
 <p align="center">
   A browser endurance racer, in the spirit of the 1983 original.<br>
-  Original pixel art and road. Not the Activision cartridge.
+  Original pixel art and road. Not the Activision cartridge. 
 </p>
 
 ## How to play
