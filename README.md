@@ -18,7 +18,7 @@ Day 1 is 50 cars before dawn. From day 2 on, 55. If the counter is still above z
 | `←` `→` or `A` `D` | Steer |
 | `Space`, `↑`, `Z`, or `X` | Gas (hold) |
 | `↓` or `S` | Brake |
-| `Enter` | Start |
+| `Backspace` | Start |
 | `P` | Pause |
 | `M` | Mute or unmute |
 

@@ -567,9 +567,9 @@
 
   function update(dt) {
     pollPad();
-    const start = gasHeld() || down.has("Enter") || pointerStart || padStartEdge;
+    const start = gasHeld() || down.has("Enter") || down.has("Backspace") || pointerStart || padStartEdge;
     if ((mode === "title" || mode === "over") && start && !wasStart) startGame();
-    wasStart = gasHeld() || down.has("Enter") || padWasButton;
+    wasStart = gasHeld() || down.has("Enter") || down.has("Backspace") || padWasButton;
     pointerStart = false;
     padStartEdge = false;
 
@@ -663,12 +663,24 @@
   }
 
   function renderWorld(phase) {
+    const fogAmt = clamp(phase.fog, 0, 1);
+    const fogCol = lerpHex(phase.sky2, "#D4DCE2", Math.min(1, fogAmt));
+    const veil = (hex, cover) => (cover > 0.004 ? lerpHex(hex, fogCol, cover) : hex);
+    // Thickest fog still leaves the road and sky showing through.
+    const fogCover = (dist) => {
+      if (fogAmt <= 0.001) return 0;
+      const depth = clamp((dist - 18) / (FAR - 18), 0, 1);
+      return fogAmt * depth * 0.72;
+    };
+
     for (let y = 0; y < ROAD_Y0; y++) {
-      ctx.fillStyle = lerpHex(phase.sky, phase.sky2, y / ROAD_Y0);
+      const sky = lerpHex(phase.sky, phase.sky2, y / ROAD_Y0);
+      const cover = fogAmt * (0.3 + 0.42 * (y / ROAD_Y0));
+      ctx.fillStyle = veil(sky, cover);
       ctx.fillRect(0, y, W, 1);
     }
 
-    if (phase.night > 0.72) {
+    if (phase.night > 0.72 && fogAmt < 0.45) {
       ctx.fillStyle = "#F4F4F0";
       const tw = Math.floor(demoT + dayT);
       for (let i = 0; i < STARS.length; i++) {
@@ -678,49 +690,37 @@
     }
 
     const scroll = playerZ * 0.16 + playerX * 20;
-    ctx.fillStyle = phase.mtn;
+    ctx.fillStyle = veil(phase.mtn, fogAmt * 0.62);
     for (let x = 0; x < W; x++) {
       const h = Math.max(2, Math.round(ridge(x + scroll)));
       ctx.fillRect(x, ROAD_Y0 - h, 1, h);
     }
 
-    const fogAmt = clamp(phase.fog, 0, 1);
-    const fogFar = FAR - (FAR - 34) * fogAmt;
-    const fogCol = lerpHex(phase.sky2, "#D4DCE2", fogAmt);
     const gAlt = shade(phase.gnd, 0.9);
-
-    if (phase.fog > 0.82) {
-      ctx.fillStyle = fogCol;
-      ctx.fillRect(0, 0, W, ROAD_Y0);
-    }
 
     for (let y = ROAD_Y0; y <= ROAD_Y1; y++) {
       const row = rows[y];
-      if (row.dist > fogFar) {
-        ctx.fillStyle = fogCol;
-        ctx.fillRect(0, y, W, 1);
-        continue;
-      }
+      const cover = fogCover(row.dist);
       const band = Math.floor((playerZ + row.dist) / 10) % 2 === 0;
-      ctx.fillStyle = band ? phase.gnd : gAlt;
+      ctx.fillStyle = veil(band ? phase.gnd : gAlt, cover);
       ctx.fillRect(0, y, W, 1);
       const cx = W / 2 + row.roadX * row.half;
       const left = Math.round(cx - row.half);
       const right = Math.round(cx + row.half);
       if (right <= left) continue;
-      ctx.fillStyle = phase.road;
+      ctx.fillStyle = veil(phase.road, cover);
       ctx.fillRect(left, y, right - left, 1);
-      ctx.fillStyle = phase.edge;
+      ctx.fillStyle = veil(phase.edge, cover);
       ctx.fillRect(left, y, 1, 1);
       ctx.fillRect(right - 1, y, 1, 1);
       const z = playerZ + row.dist;
       if (right - left > 5 && Math.floor(z / 8) % 2 === 0) {
-        ctx.fillStyle = phase.line;
+        ctx.fillStyle = veil(phase.line, cover);
         const lw = row.scale > 0.5 ? 2 : 1;
         ctx.fillRect(Math.round(cx) - (lw > 1 ? 1 : 0), y, lw, 1);
       }
       if (Math.floor(z / 16) % 2 === 0 && row.scale > 0.25) {
-        ctx.fillStyle = phase.night > 0.6 ? "#F0E080" : gAlt;
+        ctx.fillStyle = veil(phase.night > 0.6 ? "#F0E080" : gAlt, cover);
         ctx.fillRect(left - 2, y, 1, 1);
         ctx.fillRect(right + 1, y, 1, 1);
       }
@@ -729,7 +729,7 @@
     const visible = [];
     for (const car of cars) {
       const dist = car.z - playerZ;
-      if (dist < 2.2 || dist > fogFar) continue;
+      if (dist < 2.2 || dist > FAR || fogCover(dist) > 0.62) continue;
       const proj = project(dist, car.x);
       if (!proj) continue;
       visible.push({ car: car, proj: proj, dist: dist });
@@ -808,7 +808,7 @@
     if (toastT > 0 && toast) drawCentered(toast, 8, 1, "#E8E230", true);
     if (mode === "title") {
       drawCentered("ENDURANCE", 16, 2, "#E8E230", true);
-      if (Math.floor(demoT * 2) % 2 === 0) drawCentered("PRESS FIRE", 36, 1, "#F4F4F0", true);
+      if (Math.floor(demoT * 2) % 2 === 0) drawCentered("PRESS BACKSPACE", 36, 1, "#F4F4F0", true);
       if (bestDay > 0) {
         const best = "BEST " + String(bestDay).padStart(2, "0") + " " + String(bestKm).padStart(5, "0");
         drawCentered(best, 48, 1, "#F4F4F0", true);
@@ -823,7 +823,7 @@
       if (bestDay > 0) {
         drawCentered("BEST " + String(bestDay).padStart(2, "0") + " " + String(bestKm).padStart(5, "0"), 52, 1, "#F4F4F0", true);
       }
-      if (Math.floor(Date.now() / 500) % 2 === 0) drawCentered("PRESS FIRE", 66, 1, "#F4F4F0", true);
+      if (Math.floor(Date.now() / 500) % 2 === 0) drawCentered("PRESS BACKSPACE", 66, 1, "#F4F4F0", true);
     }
     if (trophyT > 0 && mode === "playing") {
       drawCentered("ROADBUSTER", 28, 1, "#7DDC78", true);
@@ -1109,7 +1109,7 @@
   }
 
   window.addEventListener("keydown", (e) => {
-    const controls = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "KeyW", "KeyA", "KeyS", "KeyD", "KeyZ", "KeyX", "Enter"];
+    const controls = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "KeyW", "KeyA", "KeyS", "KeyD", "KeyZ", "KeyX", "Enter", "Backspace"];
     if (controls.includes(e.code)) e.preventDefault();
     down.add(e.code);
     sfx.unlock();
@@ -1117,7 +1117,7 @@
       if (mode === "playing") mode = "paused";
       else if (mode === "paused") mode = "playing";
     }
-    if (e.code === "Enter" && !e.repeat && mode === "paused") mode = "playing";
+    if ((e.code === "Enter" || e.code === "Backspace") && !e.repeat && mode === "paused") mode = "playing";
     if (e.code === "KeyM" && !e.repeat) {
       muted = !muted;
       storageSet("endurance-muted", muted ? "1" : "0");
